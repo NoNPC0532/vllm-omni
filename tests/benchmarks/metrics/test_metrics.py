@@ -591,6 +591,7 @@ def test_image_with_generated_text_still_reports_text_result(capsys):
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "-s"])
 
+
 @pytest.mark.parametrize("slo_ms, expected", [(100.0, 0.0), (300.0, 1.0)])
 def test_audio_ttfp_goodput_slo(slo_ms, expected):
     output = _make_output(100)
