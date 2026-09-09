@@ -48,6 +48,12 @@ def _restore_native_batch_invariant_env() -> Iterator[None]:
         envs.__dict__.pop("VLLM_BATCH_INVARIANT", None)
 
 
+@pytest.fixture(autouse=True)
+def _unset_diffusion_switch(monkeypatch):
+    """Stop an inherited explicit switch from silently disabling the batch-invariant cases."""
+    monkeypatch.delenv(DIFFUSION_BATCH_INVARIANT_ENV, raising=False)
+
+
 @pytest.mark.parametrize("seed", [MIN_TORCH_MANUAL_SEED, -2, 0, 42, MAX_TORCH_MANUAL_SEED])
 def test_batch_invariant_mode_accepts_full_torch_seed_range(monkeypatch, seed):
     monkeypatch.setattr(envs, "VLLM_BATCH_INVARIANT", True)
@@ -98,8 +104,6 @@ def test_feature_off_preserves_generator_and_missing_seed_compatibility(monkeypa
 
 
 def test_diffusion_switch_unset_follows_global_batch_invariant(monkeypatch):
-    monkeypatch.delenv(DIFFUSION_BATCH_INVARIANT_ENV, raising=False)
-
     monkeypatch.setattr(envs, "VLLM_BATCH_INVARIANT", True)
     assert diffusion_batch_invariant_enabled() is True
 
@@ -107,23 +111,31 @@ def test_diffusion_switch_unset_follows_global_batch_invariant(monkeypatch):
     assert diffusion_batch_invariant_enabled() is False
 
 
-@pytest.mark.parametrize("raw", ["1", "TRUE", " On "])
-def test_diffusion_switch_enables_while_global_is_off(monkeypatch, raw):
-    monkeypatch.setattr(envs, "VLLM_BATCH_INVARIANT", False)
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("1", True),
+        ("true", True),
+        ("TRUE", True),
+        ("yes", True),
+        ("on", True),
+        (" On ", True),
+        ("0", False),
+        ("false", False),
+        ("FALSE", False),
+        ("no", False),
+        ("off", False),
+        (" Off ", False),
+    ],
+)
+def test_diffusion_switch_overrides_global_batch_invariant(monkeypatch, raw, expected):
+    monkeypatch.setattr(envs, "VLLM_BATCH_INVARIANT", not expected)
     monkeypatch.setenv(DIFFUSION_BATCH_INVARIANT_ENV, raw)
 
-    assert diffusion_batch_invariant_enabled() is True
+    assert diffusion_batch_invariant_enabled() is expected
 
 
-@pytest.mark.parametrize("raw", ["0", "FALSE", " Off "])
-def test_diffusion_switch_disables_while_global_is_on(monkeypatch, raw):
-    monkeypatch.setattr(envs, "VLLM_BATCH_INVARIANT", True)
-    monkeypatch.setenv(DIFFUSION_BATCH_INVARIANT_ENV, raw)
-
-    assert diffusion_batch_invariant_enabled() is False
-
-
-@pytest.mark.parametrize("raw", ["", "2"])
+@pytest.mark.parametrize("raw", ["", "maybe", "2", "none"])
 def test_diffusion_switch_rejects_unparsable_values(monkeypatch, raw):
     monkeypatch.setattr(envs, "VLLM_BATCH_INVARIANT", True)
     monkeypatch.setenv(DIFFUSION_BATCH_INVARIANT_ENV, raw)
